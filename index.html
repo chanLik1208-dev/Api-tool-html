@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pro Local API Client</title>
+    <style>
+        :root {
+            --bg-color: #1e1e1e;
+            --panel-bg: #252526;
+            --input-bg: #3c3c3c;
+            --text-color: #d4d4d4;
+            --accent-color: #0e639c;
+            --border-color: #454545;
+            --success-color: #4ec9b0;
+            --error-color: #f48771;
+            --keyword: #569cd6;
+            --string: #ce9178;
+        }
+
+        * { box-sizing: border-box; outline: none; }
+        body {
+            margin: 0;
+            font-family: 'Segoe UI', Consolas, 'Courier New', monospace;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Top Bar */
+        .request-bar {
+            display: flex;
+            padding: 10px;
+            background-color: var(--panel-bg);
+            border-bottom: 1px solid var(--border-color);
+            gap: 10px;
+        }
+
+        select, input, button {
+            background-color: var(--input-bg);
+            border: 1px solid var(--border-color);
+            color: var(--text-color);
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        select { width: 100px; font-weight: bold; cursor: pointer; }
+        input { flex-grow: 1; font-family: monospace; }
+        button { cursor: pointer; background-color: var(--accent-color); border-color: var(--accent-color); color: white; font-weight: bold; }
+        button:hover { opacity: 0.9; }
+        button:disabled { background-color: var(--border-color); cursor: not-allowed; }
+
+        /* Main Layout */
+        .main-container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* Left Panel (Config) & Right Panel (Response) */
+        .panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid var(--border-color);
+            min-width: 300px;
+        }
+        .panel:last-child { border-right: none; }
+
+        /* Tabs */
+        .tabs {
+            display: flex;
+            background-color: var(--panel-bg);
+            border-bottom: 1px solid var(--border-color);
+        }
+        .tab {
+            padding: 8px 16px;
+            cursor: pointer;
+            font-size: 13px;
+            border-right: 1px solid var(--border-color);
+            opacity: 0.7;
+        }
+        .tab.active {
+            opacity: 1;
+            background-color: var(--bg-color);
+            border-top: 2px solid var(--accent-color);
+        }
+
+        /* Content Areas */
+        .content-area {
+            flex: 1;
+            padding: 10px;
+            overflow-y: auto;
+            position: relative;
+        }
+        .hidden { display: none; }
+
+        /* Headers Input */
+        .header-row { display: flex; gap: 5px; margin-bottom: 5px; }
+        .header-row input { flex: 1; }
+        .btn-icon { padding: 8px; width: 35px; background: transparent; border: 1px solid var(--border-color); }
+        .btn-add { color: var(--success-color); }
+        .btn-del { color: var(--error-color); }
+
+        /* JSON Textarea */
+        textarea {
+            width: 100%;
+            height: 100%;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            border: none;
+            resize: none;
+            font-family: Consolas, monospace;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        /* Response View */
+        .meta-info {
+            display: flex;
+            gap: 15px;
+            font-size: 12px;
+            margin-bottom: 10px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .meta-tag span { font-weight: bold; }
+        .status-ok { color: var(--success-color); }
+        .status-err { color: var(--error-color); }
+
+        pre { margin: 0; white-space: pre-wrap; word-break: break-all; }
+        
+        /* Simple Syntax Highlight */
+        .json-key { color: var(--keyword); }
+        .json-string { color: var(--string); }
+        .json-number { color: #b5cea8; }
+        .json-boolean { color: #569cd6; }
+        .json-null { color: #569cd6; }
+
+        /* Loading Overlay */
+        .loader {
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.5);
+            display: flex; justify-content: center; align-items: center;
+            z-index: 10;
+        }
+        .spinner {
+            width: 30px; height: 30px; border: 3px solid #fff; border-top: 3px solid var(--accent-color); border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+    <div class="request-bar">
+        <select id="method">
+            <option value="GET">GET</option>
+            <option value="POST">POST</option>
+            <option value="PUT">PUT</option>
+            <option value="PATCH">PATCH</option>
+            <option value="DELETE">DELETE</option>
+            <option value="OPTIONS">OPTIONS</option>
+            <option value="HEAD">HEAD</option>
+        </select>
+        <input type="text" id="url" placeholder="https://api.example.com/v1/users" value="https://jsonplaceholder.typicode.com/todos/1">
+        <button id="sendBtn" onclick="sendRequest()">SEND</button>
+    </div>
+
+    <div class="main-container">
+        <div class="panel">
+            <div class="tabs">
+                <div class="tab active" onclick="switchTab('req', 'body')">Body</div>
+                <div class="tab" onclick="switchTab('req', 'headers')">Headers</div>
+            </div>
+            
+            <div id="req-body" class="content-area">
+                <textarea id="bodyInput" placeholder='{
+  "key": "value"
+}' spellcheck="false"></textarea>
+            </div>
+
+            <div id="req-headers" class="content-area hidden">
+                <div id="headers-container">
+                    </div>
+                <button class="btn-icon btn-add" onclick="addHeaderRow()" style="width: 100%; margin-top: 10px;">+</button>
+            </div>
+        </div>
+
+        <div class="panel">
+            <div class="tabs">
+                <div class="tab active" onclick="switchTab('res', 'preview')">Response</div>
+                <div class="tab" onclick="switchTab('res', 'raw')">Raw</div>
+                <div class="tab" onclick="switchTab('res', 'res-headers')">Headers</div>
+            </div>
+
+            <div id="res-preview" class="content-area">
+                <div class="meta-info" id="metaInfo" style="display:none;">
+                    <div class="meta-tag">Status: <span id="statusDisplay"></span></div>
+                    <div class="meta-tag">Time: <span id="timeDisplay"></span></div>
+                    <div class="meta-tag">Size: <span id="sizeDisplay"></span></div>
+                </div>
+                <div id="loader" class="loader hidden"><div class="spinner"></div></div>
+                <pre id="jsonViewer"></pre>
+            </div>
+
+            <div id="res-raw" class="content-area hidden">
+                <textarea id="rawViewer" readonly></textarea>
+            </div>
+
+            <div id="res-res-headers" class="content-area hidden">
+                <pre id="resHeaderViewer"></pre>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- State Management & Initialization ---
+        document.addEventListener('DOMContentLoaded', () => {
+            loadState();
+            if (document.querySelectorAll('.header-row').length === 0) {
+                addHeaderRow('Content-Type', 'application/json');
+            }
+        });
+
+        function switchTab(type, target) {
+            // Hide all tabs/content in the specific panel (req or res)
+            const panel = target.startsWith('req') || target === 'body' || target === 'headers' 
+                ? document.querySelector('.panel:first-child') 
+                : document.querySelector('.panel:last-child');
+            
+            panel.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            panel.querySelectorAll('.content-area').forEach(c => c.classList.add('hidden'));
+
+            // Activate target
+            event.target.classList.add('active');
+            
+            // Mapping for simple tab names to IDs
+            let idMap = {
+                'body': 'req-body',
+                'headers': 'req-headers',
+                'preview': 'res-preview',
+                'raw': 'res-raw',
+                'res-headers': 'res-res-headers'
+            };
+            document.getElementById(idMap[target]).classList.remove('hidden');
+        }
+
+        // --- Header Logic ---
+        function addHeaderRow(key = '', value = '') {
+            const container = document.getElementById('headers-container');
+            const row = document.createElement('div');
+            row.className = 'header-row';
+            row.innerHTML = `
+                <input type="text" placeholder="Key" class="header-key" value="${key}">
+                <input type="text" placeholder="Value" class="header-val" value="${value}">
+                <button class="btn-icon btn-del" onclick="this.parentElement.remove()">×</button>
+            `;
+            container.appendChild(row);
+        }
+
+        function getHeaders() {
+            const headers = {};
+            document.querySelectorAll('.header-row').forEach(row => {
+                const key = row.querySelector('.header-key').value.trim();
+                const val = row.querySelector('.header-val').value.trim();
+                if (key) headers[key] = val;
+            });
+            return headers;
+        }
+
+        // --- Core Request Logic ---
+        async function sendRequest() {
+            const url = document.getElementById('url').value;
+            const method = document.getElementById('method').value;
+            const bodyStr = document.getElementById('bodyInput').value;
+            const headers = getHeaders();
+            
+            const loader = document.getElementById('loader');
+            const metaInfo = document.getElementById('metaInfo');
+            const jsonViewer = document.getElementById('jsonViewer');
+            const rawViewer = document.getElementById('rawViewer');
+            const resHeaderViewer = document.getElementById('resHeaderViewer');
+
+            saveState(); // Save before sending
+            
+            // UI Reset
+            loader.classList.remove('hidden');
+            metaInfo.style.display = 'none';
+            jsonViewer.innerHTML = '';
+            rawViewer.value = '';
+            resHeaderViewer.innerText = '';
+
+            const startTime = performance.now();
+
+            try {
+                const options = { method, headers };
+                if (method !== 'GET' && method !== 'HEAD' && bodyStr.trim()) {
+                    options.body = bodyStr;
+                }
+
+                const response = await fetch(url, options);
+                const endTime = performance.now();
+
+                // Process Meta Info
+                const duration = (endTime - startTime).toFixed(0) + 'ms';
+                const size = (response.headers.get('content-length') / 1024).toFixed(2) + ' KB';
+                
+                document.getElementById('statusDisplay').innerText = `${response.status} ${response.statusText}`;
+                document.getElementById('statusDisplay').className = response.ok ? 'status-ok' : 'status-err';
+                document.getElementById('timeDisplay').innerText = duration;
+                document.getElementById('sizeDisplay').innerText = size === 'NaN KB' ? 'Chunked' : size;
+                metaInfo.style.display = 'flex';
+
+                // Process Headers
+                let headerText = '';
+                response.headers.forEach((val, key) => { headerText += `${key}: ${val}\n`; });
+                resHeaderViewer.innerText = headerText;
+
+                // Process Body
+                const textData = await response.text();
+                rawViewer.value = textData;
+
+                try {
+                    const jsonData = JSON.parse(textData);
+                    jsonViewer.innerHTML = syntaxHighlight(jsonData);
+                } catch (e) {
+                    jsonViewer.innerText = textData; // Fallback to text if not JSON
+                }
+
+            } catch (error) {
+                document.getElementById('statusDisplay').innerText = 'ERROR';
+                document.getElementById('statusDisplay').className = 'status-err';
+                jsonViewer.innerHTML = `<span style="color:var(--error-color)">Request Failed: ${error.message}<br><br>Possible causes:<br>1. CORS (Cross-Origin Resource Sharing) blocked.<br>2. Network error.<br>3. Invalid URL.</span>`;
+                metaInfo.style.display = 'flex';
+            } finally {
+                loader.classList.add('hidden');
+            }
+        }
+
+        // --- Utilities ---
+        function syntaxHighlight(json) {
+            if (typeof json != 'string') {
+                json = JSON.stringify(json, undefined, 2);
+            }
+            json = json.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            return json.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, function (match) {
+                var cls = 'json-number';
+                if (/^"/.test(match)) {
+                    if (/:$/.test(match)) {
+                        cls = 'json-key';
+                    } else {
+                        cls = 'json-string';
+                    }
+                } else if (/true|false/.test(match)) {
+                    cls = 'json-boolean';
+                } else if (/null/.test(match)) {
+                    cls = 'json-null';
+                }
+                return '<span class="' + cls + '">' + match + '</span>';
+            });
+        }
+
+        // --- LocalStorage Persistence ---
+        function saveState() {
+            localStorage.setItem('api_url', document.getElementById('url').value);
+            localStorage.setItem('api_method', document.getElementById('method').value);
+            localStorage.setItem('api_body', document.getElementById('bodyInput').value);
+            
+            // Save headers as JSON string
+            const headers = [];
+            document.querySelectorAll('.header-row').forEach(row => {
+                headers.push({
+                    key: row.querySelector('.header-key').value,
+                    val: row.querySelector('.header-val').value
+                });
+            });
+            localStorage.setItem('api_headers', JSON.stringify(headers));
+        }
+
+        function loadState() {
+            if(localStorage.getItem('api_url')) document.getElementById('url').value = localStorage.getItem('api_url');
+            if(localStorage.getItem('api_method')) document.getElementById('method').value = localStorage.getItem('api_method');
+            if(localStorage.getItem('api_body')) document.getElementById('bodyInput').value = localStorage.getItem('api_body');
+
+            const savedHeaders = JSON.parse(localStorage.getItem('api_headers') || '[]');
+            if (savedHeaders.length > 0) {
+                document.getElementById('headers-container').innerHTML = ''; // Clear defaults
+                savedHeaders.forEach(h => addHeaderRow(h.key, h.val));
+            }
+        }
+    </script>
+</body>
+</html>
