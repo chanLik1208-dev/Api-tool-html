@@ -186,7 +186,7 @@
 
             <div id="req-headers" class="content-area hidden">
                 <div id="headers-container">
-                    </div>
+                </div>
                 <button class="btn-icon btn-add" onclick="addHeaderRow()" style="width: 100%; margin-top: 10px;">+</button>
             </div>
         </div>
@@ -308,12 +308,13 @@
 
                 // Process Meta Info
                 const duration = (endTime - startTime).toFixed(0) + 'ms';
-                const size = (response.headers.get('content-length') / 1024).toFixed(2) + ' KB';
+                const sizeVal = response.headers.get('content-length');
+                const size = sizeVal ? (sizeVal / 1024).toFixed(2) + ' KB' : 'Chunked';
                 
                 document.getElementById('statusDisplay').innerText = `${response.status} ${response.statusText}`;
                 document.getElementById('statusDisplay').className = response.ok ? 'status-ok' : 'status-err';
                 document.getElementById('timeDisplay').innerText = duration;
-                document.getElementById('sizeDisplay').innerText = size === 'NaN KB' ? 'Chunked' : size;
+                document.getElementById('sizeDisplay').innerText = size;
                 metaInfo.style.display = 'flex';
 
                 // Process Headers
